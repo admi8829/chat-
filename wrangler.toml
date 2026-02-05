@@ -1,0 +1,18 @@
+name = "telegram-feedback-bot"
+main = "telegram-bot.js"
+compatibility_date = "2024-01-01"
+
+# Environment variables (set these in Cloudflare dashboard or via wrangler secret)
+# BOT_TOKEN = "your-telegram-bot-token"
+# ADMIN_ID = "your-telegram-admin-id"
+
+[vars]
+# Non-sensitive variables can go here
+
+# For production deployment
+[env.production]
+name = "telegram-feedback-bot-prod"
+
+# For staging deployment
+[env.staging]
+name = "telegram-feedback-bot-staging"
