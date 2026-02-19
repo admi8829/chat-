@@ -44,9 +44,23 @@ async function handleUpdate(update, botToken, adminId) {
   const username = message.from.username ? `@${message.from.username}` : 'ዩዘርኔም የለውም';
   const fullName = `${message.from.first_name || ''} ${message.from.last_name || ''}`.trim();
 
-  // /start ትዕዛዝ ሲላክ
+  // /start ትዕዛዝ ሲላክ - ስልክ ቁጥር እንዲልኩ መጠየቂያ
   if (message.text === '/start') {
-    await sendMessage(botToken, chatId, '👋 ሰላም! እንኳን ደህና መጡ። ማንኛውንም አስተያየት ወይም ጥያቄ እዚህ ይጻፉልኝ፣ እኔ ደግሞ ለአስተዳዳሪው አስተላልፋለሁ።');
+    const keyboard = {
+      keyboard: [[{ text: "📲 ስልክ ቁጥርህን ላክ (Share Contact)", request_contact: true }]],
+      resize_keyboard: true,
+      one_time_keyboard: true
+    };
+    await sendMessage(botToken, chatId, '👋 ሰላም! እንኳን ደህና መጡ። ቦቱን ለመጠቀም መጀመሪያ እባክዎ ከታች ያለውን በተን ተጭነው ስልክ ቁጥርዎን ያጋሩ።', keyboard);
+    return;
+  }
+
+  // ስልክ ቁጥር ሲላክ ወደ አስተዳዳሪ ማስተላለፍ
+  if (message.contact) {
+    const phone = message.contact.phone_number;
+    const contactInfo = `👤 <b>አዲስ ተጠቃሚ ስልክ ቁጥር ልኳል:</b>\n\n👤 ስም: ${fullName}\n📞 ስልክ: ${phone}\n🆔 ID: <code>${userId}</code>`;
+    await sendMessage(botToken, adminId, contactInfo);
+    await sendMessage(botToken, chatId, '✅ ስልክ ቁጥርዎ ተመዝግቧል። አሁን መልዕክትዎን፣ ፎቶ፣ ቪዲዮ ወይም ስቲከር መላክ ይችላሉ።');
     return;
   }
 
@@ -61,10 +75,10 @@ async function handleUpdate(update, botToken, adminId) {
     return;
   }
 
-  // የተጠቃሚውን መልዕክት ወደ አስተዳዳሪ ማስተላለፍ
+  // የተጠቃሚውን መልዕክት (sticker ጨምሮ) ወደ አስተዳዳሪ ማስተላለፍ
   await forwardToAdmin(message, botToken, adminId, userId, username, fullName);
 
-  // ለተጠቃሚው ማረጋገጫ መላክ
+  // ለተጠቃሚው ማረጋገጫ መላክ (ከስቲከር ውጭ ላሉት)
   await sendMessage(botToken, chatId, '✅ መልዕክትዎ ደርሷል። እናመሰግናለን!');
 }
 
@@ -85,6 +99,10 @@ async function forwardToAdmin(message, botToken, adminId, userId, username, full
     await sendDocument(botToken, adminId, message.document.file_id, userInfo + (message.caption || ''));
   } else if (message.voice) {
     await sendVoice(botToken, adminId, message.voice.file_id, userInfo);
+  } else if (message.sticker) {
+    // ስቲከር ሲላክ መጀመሪያ መረጃውን ልኮ ቀጥሎ ስቲከሩን ይልካል
+    await sendMessage(botToken, adminId, userInfo + "👆 [ተጠቃሚው ስቲከር ልኳል]");
+    await sendSticker(botToken, adminId, message.sticker.file_id);
   } else {
     await sendMessage(botToken, adminId, userInfo + '[የማይደገፍ የፋይል አይነት ተልኳል]');
   }
@@ -112,16 +130,22 @@ async function handleAdminReply(message, botToken, adminId) {
     const photoId = message.photo[message.photo.length - 1].file_id;
     await sendPhoto(botToken, targetUserId, photoId, `<b>ከአስተዳዳሪው የተላከ ምስል:</b>\n${message.caption || ''}`);
     await sendMessage(botToken, adminId, '✅ ምስሉ ለተጠቃሚው ተልኳል።');
+  } else if (message.sticker) {
+    await sendSticker(botToken, targetUserId, message.sticker.file_id);
+    await sendMessage(botToken, adminId, '✅ ስቲከሩ ለተጠቃሚው ተልኳል።');
   }
 }
 
 // --- የቴሌግራም API ረዳት ተግባራት (Helper Functions) ---
 
-async function sendMessage(botToken, chatId, text) {
+async function sendMessage(botToken, chatId, text, replyMarkup = null) {
+  const body = { chat_id: chatId, text: text, parse_mode: 'HTML' };
+  if (replyMarkup) body.reply_markup = replyMarkup;
+  
   return fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: text, parse_mode: 'HTML' })
+    body: JSON.stringify(body)
   });
 }
 
@@ -130,6 +154,14 @@ async function sendPhoto(botToken, chatId, photoId, caption) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chat_id: chatId, photo: photoId, caption: caption, parse_mode: 'HTML' })
+  });
+}
+
+async function sendSticker(botToken, chatId, stickerId) {
+  return fetch(`https://api.telegram.org/bot${botToken}/sendSticker`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, sticker: stickerId })
   });
 }
 
@@ -155,5 +187,4 @@ async function sendVoice(botToken, chatId, voiceId, caption) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chat_id: chatId, voice: voiceId, caption: caption, parse_mode: 'HTML' })
   });
-                      }
-                                                                                                                       
+}
