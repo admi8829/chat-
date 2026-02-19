@@ -1,6 +1,6 @@
 /**
  * የቴሌግራም አስተያየት መቀበያ ቦት (Telegram Feedback Bot)
- * ለ Cloudflare Workers የተዘጋጀ
+ * ለ Cloudflare Workers የተዘጋጀ - የተስተካከለ (No duplicate messages)
  */
 
 export default {
@@ -11,12 +11,10 @@ export default {
       return new Response('BOT_TOKEN ወይም ADMIN_ID አልተገኘም!', { status: 500 });
     }
 
-    // የዌብሁክ (Webhook) ዝግጅትን ለመፈተሽ
     if (request.method === 'GET') {
       return new Response('ቦቱ በትክክል እየሰራ ነው!', { status: 200 });
     }
 
-    // ከቴሌግራም የሚመጡ መልዕክቶችን ለማስተናገድ
     if (request.method === 'POST') {
       try {
         const update = await request.json();
@@ -44,7 +42,7 @@ async function handleUpdate(update, botToken, adminId) {
   const username = message.from.username ? `@${message.from.username}` : 'ዩዘርኔም የለውም';
   const fullName = `${message.from.first_name || ''} ${message.from.last_name || ''}`.trim();
 
-  // /start ትዕዛዝ ሲላክ - ስልክ ቁጥር እንዲልኩ መጠየቂያ
+  // /start ትዕዛዝ ሲላክ
   if (message.text === '/start') {
     const keyboard = {
       keyboard: [[{ text: "📲 ስልክ ቁጥርህን ላክ (Share Contact)", request_contact: true }]],
@@ -55,12 +53,12 @@ async function handleUpdate(update, botToken, adminId) {
     return;
   }
 
-  // ስልክ ቁጥር ሲላክ ወደ አስተዳዳሪ ማስተላለፍ
+  // ስልክ ቁጥር ሲላክ
   if (message.contact) {
     const phone = message.contact.phone_number;
     const contactInfo = `👤 <b>አዲስ ተጠቃሚ ስልክ ቁጥር ልኳል:</b>\n\n👤 ስም: ${fullName}\n📞 ስልክ: ${phone}\n🆔 ID: <code>${userId}</code>`;
     await sendMessage(botToken, adminId, contactInfo);
-    await sendMessage(botToken, chatId, '✅ ስልክ ቁጥርዎ ተመዝግቧል። አሁን መልዕክትዎን፣ ፎቶ፣ ቪዲዮ ወይም ስቲከር መላክ ይችላሉ።');
+    await sendMessage(botToken, chatId, '✅ ስልክ ቁጥርዎ ተመዝግቧል። አሁን መልዕክትዎን መላክ ይችላሉ።');
     return;
   }
 
@@ -70,16 +68,17 @@ async function handleUpdate(update, botToken, adminId) {
     return;
   }
 
-  // አስተዳዳሪው ዝም ብሎ መልዕክት ከላከ ችላ እንዲለው
+  // አስተዳዳሪው ዝም ብሎ መልዕክት ከላከ (Reply ካልሆነ) ችላ እንዲለው
   if (userId.toString() === adminId.toString()) {
     return;
   }
 
-  // የተጠቃሚውን መልዕክት (sticker ጨምሮ) ወደ አስተዳዳሪ ማስተላለፍ
+  // የተጠቃሚውን መልዕክት ወደ አስተዳዳሪ ማስተላለፍ
   await forwardToAdmin(message, botToken, adminId, userId, username, fullName);
 
-  // ለተጠቃሚው ማረጋገጫ መላክ (ከስቲከር ውጭ ላሉት)
-  await sendMessage(botToken, chatId, '✅ መልዕክትዎ ደርሷል። እናመሰግናለን!');
+  // ለተጠቃሚው አንድ ጊዜ ብቻ ማረጋገጫ መላክ
+  // (ማስታወሻ፡ አስተዳዳሪው ጋር የሚሄደውና ተጠቃሚው ጋር የሚሄደው እንዳይደባለቅ እዚህ ጋር ብቻ ነው ምላሽ የሚሰጠው)
+  await sendMessage(botToken, chatId, '✅ መልዕክትዎ ደርሷል!');
 }
 
 /**
@@ -100,16 +99,13 @@ async function forwardToAdmin(message, botToken, adminId, userId, username, full
   } else if (message.voice) {
     await sendVoice(botToken, adminId, message.voice.file_id, userInfo);
   } else if (message.sticker) {
-    // ስቲከር ሲላክ መጀመሪያ መረጃውን ልኮ ቀጥሎ ስቲከሩን ይልካል
     await sendMessage(botToken, adminId, userInfo + "👆 [ተጠቃሚው ስቲከር ልኳል]");
     await sendSticker(botToken, adminId, message.sticker.file_id);
-  } else {
-    await sendMessage(botToken, adminId, userInfo + '[የማይደገፍ የፋይል አይነት ተልኳል]');
   }
 }
 
 /**
- * አስተዳዳሪው ለተላከለት መልዕክት Reply ሲያደርግ ለተጠቃሚው መላክ
+ * አስተዳዳሪው መልስ ሲሰጥ
  */
 async function handleAdminReply(message, botToken, adminId) {
   const replyTo = message.reply_to_message;
@@ -117,7 +113,7 @@ async function handleAdminReply(message, botToken, adminId) {
   const userIdMatch = originalText.match(/መለያ \(ID\): (\d+)/);
   
   if (!userIdMatch) {
-    await sendMessage(botToken, adminId, '❌ የተጠቃሚውን መለያ (ID) ማግኘት አልቻልኩም። እባክዎ መልዕክቱን Reply ማድረጎን ያረጋግጡ።');
+    await sendMessage(botToken, adminId, '❌ የተጠቃሚውን ID ማግኘት አልቻልኩም።');
     return;
   }
 
@@ -125,23 +121,22 @@ async function handleAdminReply(message, botToken, adminId) {
 
   if (message.text) {
     await sendMessage(botToken, targetUserId, `<b>ከአስተዳዳሪው የተላከ መልስ:</b>\n\n${message.text}`);
-    await sendMessage(botToken, adminId, '✅ መልሱ ለተጠቃሚው ተልኳል።');
   } else if (message.photo) {
     const photoId = message.photo[message.photo.length - 1].file_id;
     await sendPhoto(botToken, targetUserId, photoId, `<b>ከአስተዳዳሪው የተላከ ምስል:</b>\n${message.caption || ''}`);
-    await sendMessage(botToken, adminId, '✅ ምስሉ ለተጠቃሚው ተልኳል።');
   } else if (message.sticker) {
     await sendSticker(botToken, targetUserId, message.sticker.file_id);
-    await sendMessage(botToken, adminId, '✅ ስቲከሩ ለተጠቃሚው ተልኳል።');
   }
+  
+  // አስተዳዳሪው ጋር መልሱ መላኩን ለማረጋገጥ ብቻ (ለተጠቃሚው አይሄድም)
+  await sendMessage(botToken, adminId, '✅ ተልኳል።');
 }
 
-// --- የቴሌግራም API ረዳት ተግባራት (Helper Functions) ---
+// --- API Helpers ---
 
 async function sendMessage(botToken, chatId, text, replyMarkup = null) {
   const body = { chat_id: chatId, text: text, parse_mode: 'HTML' };
   if (replyMarkup) body.reply_markup = replyMarkup;
-  
   return fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
